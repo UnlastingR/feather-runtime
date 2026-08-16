@@ -1,9 +1,25 @@
-import { assertTaskTransition, TaskStatusSchema, type InternalTask, type TaskCreate, type TaskStatus } from '@feather/protocol';
+import {
+  assertTaskTransition,
+  TaskStatusSchema,
+  type InternalTask,
+  type TaskCreate,
+  type TaskStatus,
+} from '@feather/protocol';
 
 export interface TaskRepository {
-  create(input: { id: string; userId: string | null; task: TaskCreate; now: number }): Promise<void>;
+  create(input: {
+    id: string;
+    userId: string | null;
+    task: TaskCreate;
+    now: number;
+  }): Promise<void>;
   get(id: string): Promise<InternalTask | null>;
-  transition(id: string, from: TaskStatus, to: TaskStatus, patch?: Record<string, string | number | null>): Promise<boolean>;
+  transition(
+    id: string,
+    from: TaskStatus,
+    to: TaskStatus,
+    patch?: Record<string, string | number | null>,
+  ): Promise<boolean>;
 }
 
 interface TaskRow {
@@ -27,10 +43,32 @@ interface TaskRow {
 export class D1TaskRepository implements TaskRepository {
   constructor(private readonly db: D1Database) {}
 
-  async create(input: { id: string; userId: string | null; task: TaskCreate; now: number }): Promise<void> {
+  async create(input: {
+    id: string;
+    userId: string | null;
+    task: TaskCreate;
+    now: number;
+  }): Promise<void> {
     const task = input.task;
-    await this.db.prepare(`INSERT INTO tasks (id,user_id,type,status,url,preferred_engine,requires_auth,destructive,priority,payload_json,max_attempts,timeout_ms,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-      .bind(input.id, input.userId, task.type, 'created', task.url ?? null, task.engine, task.requiresAuth ? 1 : 0, task.destructive ? 1 : 0, task.priority, JSON.stringify(task), task.maxAttempts, task.timeoutMs ?? null, input.now)
+    await this.db
+      .prepare(
+        `INSERT INTO tasks (id,user_id,type,status,url,preferred_engine,requires_auth,destructive,priority,payload_json,max_attempts,timeout_ms,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      )
+      .bind(
+        input.id,
+        input.userId,
+        task.type,
+        'created',
+        task.url ?? null,
+        task.engine,
+        task.requiresAuth ? 1 : 0,
+        task.destructive ? 1 : 0,
+        task.priority,
+        JSON.stringify(task),
+        task.maxAttempts,
+        task.timeoutMs ?? null,
+        input.now,
+      )
       .run();
   }
 
@@ -56,14 +94,33 @@ export class D1TaskRepository implements TaskRepository {
     };
   }
 
-  async transition(id: string, from: TaskStatus, to: TaskStatus, patch: Record<string, string | number | null> = {}): Promise<boolean> {
+  async transition(
+    id: string,
+    from: TaskStatus,
+    to: TaskStatus,
+    patch: Record<string, string | number | null> = {},
+  ): Promise<boolean> {
     assertTaskTransition(from, to);
-    const allowedColumns = new Set(['queued_at', 'started_at', 'finished_at', 'selected_engine', 'result_artifact_id', 'error_code', 'error_message', 'cancel_requested', 'attempt_count']);
+    const allowedColumns = new Set([
+      'queued_at',
+      'started_at',
+      'finished_at',
+      'selected_engine',
+      'result_artifact_id',
+      'error_code',
+      'error_message',
+      'cancel_requested',
+      'attempt_count',
+    ]);
     const entries = Object.entries(patch).filter(([key]) => allowedColumns.has(key));
-    if (entries.length !== Object.keys(patch).length) throw new Error('Attempted to patch an unsupported task column');
+    if (entries.length !== Object.keys(patch).length)
+      throw new Error('Attempted to patch an unsupported task column');
     const assignments = ['status = ?', ...entries.map(([key]) => `${key} = ?`)];
     const values = [to, ...entries.map(([, value]) => value), id, from];
-    const result = await this.db.prepare(`UPDATE tasks SET ${assignments.join(', ')} WHERE id = ? AND status = ?`).bind(...values).run();
+    const result = await this.db
+      .prepare(`UPDATE tasks SET ${assignments.join(', ')} WHERE id = ? AND status = ?`)
+      .bind(...values)
+      .run();
     return (result.meta.changes ?? 0) === 1;
   }
 }

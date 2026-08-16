@@ -26,13 +26,19 @@ function makeTextPdf(text: string): Buffer {
 
 describe('DocumentRouter', () => {
   it('parses plain text locally', async () => {
-    const result = await new DocumentRouter().parse(Buffer.from('hello runtime'), { mime: 'text/plain', extension: 'txt' });
+    const result = await new DocumentRouter().parse(Buffer.from('hello runtime'), {
+      mime: 'text/plain',
+      extension: 'txt',
+    });
     expect(result.markdown).toBe('hello runtime');
     expect(result.parser).toBe('plain-text');
   });
 
   it('classifies and parses a native-text PDF without OCR', async () => {
-    const result = await new DocumentRouter().parse(makeTextPdf('Hello Feather Runtime'), { mime: 'application/pdf', extension: 'pdf' });
+    const result = await new DocumentRouter().parse(makeTextPdf('Hello Feather Runtime'), {
+      mime: 'application/pdf',
+      extension: 'pdf',
+    });
     expect(result.markdown).toContain('Hello Feather Runtime');
     expect(result.parser).toContain('pdf-inspector');
   });

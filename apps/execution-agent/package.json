@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --sourcemap --outfile=dist/index.js --external:@firecrawl/anydoc --external:@firecrawl/pdf-inspector --external:puppeteer-core --external:fastify --external:pino --external:zod",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node24 --format=esm --sourcemap --outfile=dist/index.js --external:undici --external:@firecrawl/anydoc --external:@firecrawl/pdf-inspector --external:puppeteer-core --external:fastify --external:pino --external:zod",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -19,6 +19,7 @@
     "fastify": "^5.6.0",
     "pino": "^10.3.1",
     "puppeteer-core": "^25.7.0",
+    "undici": "^8.10.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

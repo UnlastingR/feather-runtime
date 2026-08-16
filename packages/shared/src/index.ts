@@ -39,7 +39,13 @@ export interface HmacInput {
 }
 
 export function canonicalHmacInput(input: HmacInput): string {
-  return [input.method.toUpperCase(), input.path, input.bodyHash, input.timestamp, input.nonce].join('\n');
+  return [
+    input.method.toUpperCase(),
+    input.path,
+    input.bodyHash,
+    input.timestamp,
+    input.nonce,
+  ].join('\n');
 }
 
 export function signHmac(secret: string, input: HmacInput): string {
@@ -47,7 +53,8 @@ export function signHmac(secret: string, input: HmacInput): string {
 }
 
 export function safeEqualHex(left: string, right: string): boolean {
-  if (!/^[0-9a-f]+$/i.test(left) || !/^[0-9a-f]+$/i.test(right) || left.length !== right.length) return false;
+  if (!/^[0-9a-f]+$/i.test(left) || !/^[0-9a-f]+$/i.test(right) || left.length !== right.length)
+    return false;
   return timingSafeEqual(Buffer.from(left, 'hex'), Buffer.from(right, 'hex'));
 }
 
@@ -82,26 +89,49 @@ export function isBlockedIp(ip: string): boolean {
   const family = isIP(ip);
   if (family === 4) {
     return [
-      ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8],
-      ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.0.0.0', 24], ['192.168.0.0', 16],
-      ['198.18.0.0', 15], ['224.0.0.0', 4], ['240.0.0.0', 4],
+      ['0.0.0.0', 8],
+      ['10.0.0.0', 8],
+      ['100.64.0.0', 10],
+      ['127.0.0.0', 8],
+      ['169.254.0.0', 16],
+      ['172.16.0.0', 12],
+      ['192.0.0.0', 24],
+      ['192.168.0.0', 16],
+      ['198.18.0.0', 15],
+      ['224.0.0.0', 4],
+      ['240.0.0.0', 4],
     ].some(([network, bits]) => inV4Range(ip, network as string, bits as number));
   }
   if (family === 6) {
     const normalized = ip.toLowerCase();
-    return normalized === '::1' || normalized === '::' || normalized.startsWith('fc') || normalized.startsWith('fd') || normalized.startsWith('fe8') || normalized.startsWith('fe9') || normalized.startsWith('fea') || normalized.startsWith('feb');
+    return (
+      normalized === '::1' ||
+      normalized === '::' ||
+      normalized.startsWith('fc') ||
+      normalized.startsWith('fd') ||
+      normalized.startsWith('fe8') ||
+      normalized.startsWith('fe9') ||
+      normalized.startsWith('fea') ||
+      normalized.startsWith('feb')
+    );
   }
   return true;
 }
 
 export function assertPublicUrl(rawUrl: string): URL {
   const url = new URL(rawUrl);
-  if (!['http:', 'https:'].includes(url.protocol)) throw new RuntimeError('SSRF_BLOCKED', 'Only HTTP(S) URLs are allowed', false);
+  if (!['http:', 'https:'].includes(url.protocol))
+    throw new RuntimeError('SSRF_BLOCKED', 'Only HTTP(S) URLs are allowed', false);
   const hostname = url.hostname.toLowerCase().replace(/\.$/, '');
-  if (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname === 'metadata.google.internal') {
+  if (
+    hostname === 'localhost' ||
+    hostname.endsWith('.localhost') ||
+    hostname === 'metadata.google.internal'
+  ) {
     throw new RuntimeError('SSRF_BLOCKED', `Blocked hostname: ${hostname}`, false);
   }
-  if (isIP(hostname) && isBlockedIp(hostname)) throw new RuntimeError('SSRF_BLOCKED', `Blocked IP: ${hostname}`, false);
+  if (isIP(hostname) && isBlockedIp(hostname))
+    throw new RuntimeError('SSRF_BLOCKED', `Blocked IP: ${hostname}`, false);
   return url;
 }
 

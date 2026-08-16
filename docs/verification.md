@@ -6,14 +6,14 @@ This document records commands that were actually executed against the current s
 
 ## Build and static checks
 
-| Check | Result | Evidence |
-| --- | --- | --- |
-| ESLint | **passed** | `corepack pnpm lint` exited 0 |
-| strict TypeScript | **passed** | all 7 workspace projects typechecked successfully |
-| unit tests | **passed** | 5 files, 13 tests passed |
-| execution-agent bundle | **passed** | esbuild produced `dist/index.js` successfully |
-| Worker dry-run bundle | **passed** | 651.58 KiB upload / 103.98 KiB gzip; D1/KV/R2/Queue bindings detected |
-| Prettier enforcement | **not passed / not enforced in CI** | configuration exists, but the current tree still has files that `prettier --check` would reformat |
+| Check                  | Result     | Evidence                                                                                            |
+| ---------------------- | ---------- | --------------------------------------------------------------------------------------------------- |
+| ESLint                 | **passed** | `corepack pnpm lint` exited 0                                                                       |
+| strict TypeScript      | **passed** | all 7 workspace projects typechecked successfully                                                   |
+| unit tests             | **passed** | 5 files, 13 tests passed                                                                            |
+| execution-agent bundle | **passed** | esbuild produced `dist/index.js` successfully                                                       |
+| Worker dry-run bundle  | **passed** | 651.58 KiB upload / 103.98 KiB gzip; D1/KV/R2/Queue bindings detected                               |
+| Prettier enforcement   | **passed** | `bash scripts/format-source.sh` completed Prettier check, ESLint, and strict typecheck successfully |
 
 The project pins TypeScript 6.0.3 because the current `typescript-eslint` peer range does not yet accept TypeScript 7.0.x. This was discovered by executing the lint toolchain rather than assumed from model knowledge.
 
@@ -106,7 +106,7 @@ The test suite generates a valid native-text PDF in memory, sends it through `Do
 
 ### 5. Duplicate Queue delivery / idempotency
 
-**passed for delivery and authoritative idempotency primitives; full signed Agent start race not executed**
+**passed for delivery and authoritative idempotency primitives; full signed Agent task delivery is covered by scenario 11**
 
 A real message was pushed to `feather-runtime-jobs`, pulled with a one-second lease, deliberately left unacknowledged, and pulled again after expiry:
 
@@ -148,8 +148,8 @@ Two real Chromium navigation jobs were submitted concurrently through `Semaphore
   "configured": 1,
   "maxActive": 1,
   "results": [
-    {"id": 1, "status": 200},
-    {"id": 2, "status": 200}
+    { "id": 1, "status": 200 },
+    { "id": 2, "status": 200 }
   ]
 }
 ```
@@ -193,19 +193,29 @@ The rows were then cleaned from the remote database.
 
 Several issues were found and fixed only because the binaries were actually run:
 
-1. Lightpanda 0.3.7 `/json/version` advertises its internal `ws://127.0.0.1:9222/` endpoint, which breaks Puppeteer's `browserURL` when Docker port mapping is involved. `LightpandaEngine` now builds the WebSocket endpoint from the configured CDP address instead.
+1. Lightpanda 0.3.7 `/json/version` advertises its internal `ws://127.0.0.1:9222/` endpoint and rejects a Docker service name in the WebSocket `Host` header. `LightpandaEngine` now builds the endpoint from the configured CDP address and sends the loopback Host header.
 2. The reference Chrome Headless Shell runtime needed `libXfixes.so.3`; `libxfixes3` was added to Docker/native dependencies.
 3. The standalone install script now supports Python's `zipfile` module when `unzip` is absent and restores executable bits after extraction.
 4. The tested Docker host disables the user-namespace mechanism Chromium expects for its inner sandbox. Native/systemd keeps Chromium sandboxing enabled; the hardened reference Docker container explicitly uses `CHROMIUM_NO_SANDBOX=1` while remaining non-root with `no-new-privileges` and resource limits.
 5. Browser shutdown was checked after successful navigation and after forced container interruption; no Headless Shell processes remained.
 
-## What was not executed
+### 11. Full signed Agent E2E
 
-The following item is deliberately **not reported as passed**:
+**passed**
 
-- Full remote `Agent register -> HMAC heartbeat -> Queue pull -> signed task start -> artifact report -> signed task completion` flow.
+`bash scripts/verify-agent-e2e.sh` completed against the deployed Worker using a temporary bootstrap credential and the Node.js 24 Agent image. The run verified:
 
-The deployed Worker uses a high-entropy bootstrap secret. During verification, the execution environment's safety layer correctly blocked attempts to replace/reuse a readable temporary bootstrap credential in shell commands. Rather than weaken the authentication path or expose a reusable secret, the end-to-end signed enrollment test was left unexecuted. Individual Queue, Worker, D1, R2, browser, document, HMAC helper, and state-machine components were verified independently as described above.
+```text
+Agent registration + signed HMAC heartbeat: passed
+Queue pull/ack:                            passed
+HTTP fast path:                            completed via http
+React SPA:                                 completed via lightpanda
+Chromium on-demand path:                   completed via chromium
+D1 node registry:                           online
+R2 result artifacts:                        downloaded successfully
+```
+
+The script removed the three temporary tasks, artifacts, API key, and node, stopped its containers, confirmed the Queue was empty, and rotated the temporary bootstrap credential during cleanup.
 
 Also intentionally deferred to phase two:
 
@@ -217,4 +227,4 @@ Also intentionally deferred to phase two:
 
 ## Cleanup
 
-Verification R2 objects, remote D1 verification rows, and the Queue verification message were deleted/acknowledged after testing. The Cloudflare `feather-runtime-*` resources and deployed Worker remain because they are the actual project deployment, not temporary test infrastructure.
+Verification R2 objects, remote D1 verification rows, Queue messages, and full-E2E task/node/API-key state were deleted or acknowledged after testing. The Cloudflare `feather-runtime-*` resources and deployed Worker remain because they are the actual project deployment, not temporary test infrastructure.

@@ -10,7 +10,21 @@ import { TaskRunner } from './runner.js';
 
 const VERSION = '0.1.0';
 const config = loadConfig();
-const logger = pino({ level: process.env['LOG_LEVEL'] ?? 'info', redact: { paths: ['*.authorization', '*.token', '*.secret', '*.password', 'config.CF_QUEUES_TOKEN', 'config.NODE_SECRET', 'config.NODE_BOOTSTRAP_TOKEN'], censor: '[REDACTED]' } });
+const logger = pino({
+  level: process.env['LOG_LEVEL'] ?? 'info',
+  redact: {
+    paths: [
+      '*.authorization',
+      '*.token',
+      '*.secret',
+      '*.password',
+      'config.CF_QUEUES_TOKEN',
+      'config.NODE_SECRET',
+      'config.NODE_BOOTSTRAP_TOKEN',
+    ],
+    censor: '[REDACTED]',
+  },
+});
 const api = new ControlPlaneClient(config);
 const queue = new QueueClient(config);
 const runner = new TaskRunner(config, api);
@@ -21,7 +35,9 @@ const active = new Set<Promise<void>>();
 
 async function checkLightpanda(): Promise<boolean> {
   try {
-    const response = await fetch(new URL('/json/version', config.LIGHTPANDA_CDP_URL), { signal: AbortSignal.timeout(3_000) });
+    const response = await fetch(new URL('/json/version', config.LIGHTPANDA_CDP_URL), {
+      signal: AbortSignal.timeout(3_000),
+    });
     return response.ok;
   } catch {
     return false;
@@ -59,12 +75,27 @@ async function heartbeat(): Promise<void> {
 async function processMessage(message: PulledMessage): Promise<void> {
   const release = await totalGate.acquire();
   try {
-    const disposition = await runner.run(message.body.taskId, message.body.attemptId, message.body.idempotencyKey);
+    const disposition = await runner.run(
+      message.body.taskId,
+      message.body.attemptId,
+      message.body.idempotencyKey,
+    );
     if (disposition === 'ack') await queue.acknowledge([message.leaseId]);
     else await queue.retry([message.leaseId], 5);
   } catch (error) {
-    logger.error(redact({ event: 'message.process.failed', messageId: message.id, taskId: message.body.taskId, error: error instanceof Error ? error.message : String(error) }));
-    await queue.retry([message.leaseId], 5).catch((retryError) => logger.error({ event: 'queue.retry.failed', error: String(retryError) }));
+    logger.error(
+      redact({
+        event: 'message.process.failed',
+        messageId: message.id,
+        taskId: message.body.taskId,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    await queue
+      .retry([message.leaseId], 5)
+      .catch((retryError) =>
+        logger.error({ event: 'queue.retry.failed', error: String(retryError) }),
+      );
   } finally {
     release();
   }
@@ -96,7 +127,12 @@ async function pollLoop(): Promise<void> {
         active.add(promise);
       }
     } catch (error) {
-      logger.error(redact({ event: 'queue.pull.failed', error: error instanceof Error ? error.message : String(error) }));
+      logger.error(
+        redact({
+          event: 'queue.pull.failed',
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
       await new Promise((resolve) => setTimeout(resolve, 5_000));
     }
   }
@@ -128,14 +164,30 @@ async function main(): Promise<void> {
   await register();
   lightpandaHealthy = await checkLightpanda();
   await health.listen({ host: '127.0.0.1', port: config.HEALTH_PORT });
-  const heartbeatTimer = setInterval(() => void heartbeat().catch((error) => logger.warn({ event: 'heartbeat.failed', error: String(error) })), config.HEARTBEAT_MS);
+  const heartbeatTimer = setInterval(
+    () =>
+      void heartbeat().catch((error) =>
+        logger.warn({ event: 'heartbeat.failed', error: String(error) }),
+      ),
+    config.HEARTBEAT_MS,
+  );
   heartbeatTimer.unref();
-  logger.info({ event: 'agent.started', nodeId: config.NODE_ID, version: VERSION, lightpandaHealthy });
+  logger.info({
+    event: 'agent.started',
+    nodeId: config.NODE_ID,
+    version: VERSION,
+    lightpandaHealthy,
+  });
   await pollLoop();
   clearInterval(heartbeatTimer);
 }
 
 main().catch((error) => {
-  logger.fatal(redact({ event: 'agent.fatal', error: error instanceof Error ? error.stack ?? error.message : String(error) }));
+  logger.fatal(
+    redact({
+      event: 'agent.fatal',
+      error: error instanceof Error ? (error.stack ?? error.message) : String(error),
+    }),
+  );
   process.exitCode = 1;
 });

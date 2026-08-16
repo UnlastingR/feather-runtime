@@ -45,35 +45,45 @@ export const BrowserActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('goto'), url: z.url().optional() }),
   z.object({ type: z.literal('click'), selector: z.string().min(1) }),
   z.object({ type: z.literal('fill'), selector: z.string().min(1), value: z.string() }),
-  z.object({ type: z.literal('wait'), selector: z.string().min(1), timeoutMs: z.number().int().positive().optional() }),
+  z.object({
+    type: z.literal('wait'),
+    selector: z.string().min(1),
+    timeoutMs: z.number().int().positive().optional(),
+  }),
   z.object({ type: z.literal('extract'), selector: z.string().min(1).optional() }),
   z.object({ type: z.literal('screenshot'), fullPage: z.boolean().default(true) }),
   z.object({ type: z.literal('evaluate'), expression: z.string().min(1) }),
 ]);
 export type BrowserAction = z.infer<typeof BrowserActionSchema>;
 
-export const TaskCreateSchema = z.object({
-  type: z.enum(['scrape', 'browser', 'document']),
-  url: z.url().optional(),
-  engine: EngineSchema.default('auto'),
-  requiresAuth: z.boolean().default(false),
-  requiresPayment: z.boolean().default(false),
-  destructive: z.boolean().default(false),
-  priority: z.number().int().min(-100).max(100).default(0),
-  maxAttempts: z.number().int().min(1).max(10).default(3),
-  timeoutMs: z.number().int().positive().max(600_000).optional(),
-  selectors: z.array(z.string().min(1)).default([]),
-  actions: z.array(BrowserActionSchema).default([]),
-  sourceArtifactId: z.string().min(1).optional(),
-  metadata: z.record(z.string(), z.unknown()).default({}),
-}).superRefine((value, ctx) => {
-  if ((value.type === 'scrape' || value.type === 'browser') && !value.url) {
-    ctx.addIssue({ code: 'custom', message: 'url is required for web tasks', path: ['url'] });
-  }
-  if (value.type === 'document' && !value.sourceArtifactId) {
-    ctx.addIssue({ code: 'custom', message: 'sourceArtifactId is required for document tasks', path: ['sourceArtifactId'] });
-  }
-});
+export const TaskCreateSchema = z
+  .object({
+    type: z.enum(['scrape', 'browser', 'document']),
+    url: z.url().optional(),
+    engine: EngineSchema.default('auto'),
+    requiresAuth: z.boolean().default(false),
+    requiresPayment: z.boolean().default(false),
+    destructive: z.boolean().default(false),
+    priority: z.number().int().min(-100).max(100).default(0),
+    maxAttempts: z.number().int().min(1).max(10).default(3),
+    timeoutMs: z.number().int().positive().max(600_000).optional(),
+    selectors: z.array(z.string().min(1)).default([]),
+    actions: z.array(BrowserActionSchema).default([]),
+    sourceArtifactId: z.string().min(1).optional(),
+    metadata: z.record(z.string(), z.unknown()).default({}),
+  })
+  .superRefine((value, ctx) => {
+    if ((value.type === 'scrape' || value.type === 'browser') && !value.url) {
+      ctx.addIssue({ code: 'custom', message: 'url is required for web tasks', path: ['url'] });
+    }
+    if (value.type === 'document' && !value.sourceArtifactId) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'sourceArtifactId is required for document tasks',
+        path: ['sourceArtifactId'],
+      });
+    }
+  });
 export type TaskCreate = z.infer<typeof TaskCreateSchema>;
 
 export const QueueMessageSchema = z.object({
@@ -100,11 +110,13 @@ export const ExecutionResultSchema = z.object({
   attemptId: z.string(),
   engine: ExecutedEngineSchema,
   success: z.boolean(),
-  content: z.object({
-    markdown: z.string().optional(),
-    text: z.string().optional(),
-    htmlArtifactId: z.string().optional(),
-  }).optional(),
+  content: z
+    .object({
+      markdown: z.string().optional(),
+      text: z.string().optional(),
+      htmlArtifactId: z.string().optional(),
+    })
+    .optional(),
   artifacts: z.array(ArtifactRefSchema),
   timing: z.object({
     totalMs: z.number().nonnegative(),

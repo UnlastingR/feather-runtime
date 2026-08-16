@@ -65,7 +65,7 @@ bash scripts/format-source.sh
 
 The project was implemented against the live package/release state on 2026-08-16:
 
-- Node.js 22 LTS runtime.
+- Node.js 24 LTS runtime for the reference Agent image.
 - Hono 4.13.x.
 - Wrangler 4.123.x.
 - Lightpanda 0.3.7 (official Docker tag exists).
@@ -98,7 +98,7 @@ docs/                  architecture, security, troubleshooting, OpenAPI
 
 ## Prerequisites
 
-- Node.js 22 or newer supported LTS.
+- Node.js 22 or newer supported LTS; Node.js 24 is the preferred runtime.
 - Corepack and pnpm 11.22.x.
 - A Cloudflare account with Workers, D1, KV, R2, and Queues.
 - For HTTP pull: a narrowly scoped Queues token with read + write (ack mutates queue state).
