@@ -1,0 +1,20 @@
+[Unit]
+Description=Feather Runtime Lightpanda CDP
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=feather
+Group=feather
+ExecStart=/usr/local/bin/lightpanda serve --host 127.0.0.1 --port 9222 --log_level info
+Restart=on-failure
+RestartSec=3
+MemoryMax=384M
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target

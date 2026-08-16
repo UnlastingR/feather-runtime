@@ -1,0 +1,6 @@
+# Cloudflare Worker local-only secrets
+BOOTSTRAP_TOKEN=replace-me
+NODE_KEY_ENCRYPTION_KEY=base64-encoded-32-byte-key
+API_HASH_PEPPER=replace-me
+# Set only for isolated local development.
+AUTH_DISABLED=0

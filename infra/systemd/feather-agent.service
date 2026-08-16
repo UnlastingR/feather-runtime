@@ -1,0 +1,26 @@
+[Unit]
+Description=Feather Runtime Execution Agent
+After=network-online.target feather-lightpanda.service
+Wants=network-online.target feather-lightpanda.service
+
+[Service]
+Type=simple
+User=feather
+Group=feather
+WorkingDirectory=/opt/feather-runtime
+EnvironmentFile=/etc/feather-runtime/agent.env
+ExecStart=/usr/bin/node apps/execution-agent/dist/index.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=180
+KillSignal=SIGTERM
+MemoryMax=1700M
+TasksMax=384
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/tmp
+
+[Install]
+WantedBy=multi-user.target

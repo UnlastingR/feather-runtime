@@ -1,0 +1,49 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "feather-runtime-control-plane",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-16",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "vars": {
+    "AUTH_DISABLED": "0"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "feather-runtime-db",
+      "database_id": "f604a810-093a-4b7d-8478-67a1194da0e2",
+      "migrations_dir": "../../migrations"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "CACHE",
+      "id": "447b91f794014b1ea78de9e07a7013db"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "ARTIFACTS",
+      "bucket_name": "feather-runtime-artifacts"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "JOBS",
+        "queue": "feather-runtime-jobs"
+      }
+    ]
+  },
+  "env": {
+    "staging": {
+      "name": "feather-runtime-control-plane-staging",
+      "vars": { "AUTH_DISABLED": "0" }
+    },
+    "production": {
+      "name": "feather-runtime-control-plane",
+      "vars": { "AUTH_DISABLED": "0" }
+    }
+  }
+}

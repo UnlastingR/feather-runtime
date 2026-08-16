@@ -1,0 +1,158 @@
+openapi: 3.1.0
+info:
+  title: Feather Runtime API
+  version: 0.1.0
+  description: Cloudflare control plane for lightweight web/document automation.
+servers:
+  - url: https://runtime.example.com
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      security: []
+      summary: Control-plane health
+      responses:
+        '200': { description: Healthy }
+  /v1/tasks:
+    post:
+      summary: Create a task
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskCreate' }
+      responses:
+        '202':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [taskId, attemptId]
+                properties:
+                  taskId: { type: string }
+                  attemptId: { type: string }
+        '400': { description: Invalid task }
+        '401': { description: Unauthorized }
+        '403': { description: Missing scope }
+  /v1/tasks/{id}:
+    get:
+      summary: Read task state
+      parameters: [{ $ref: '#/components/parameters/TaskId' }]
+      responses:
+        '200': { description: Task row }
+        '404': { description: Not found }
+  /v1/tasks/{id}/cancel:
+    post:
+      summary: Request cancellation
+      parameters: [{ $ref: '#/components/parameters/TaskId' }]
+      responses:
+        '200': { description: Cancellation accepted or task already terminal }
+        '404': { description: Not found }
+  /v1/tasks/{id}/events:
+    get:
+      summary: Read append-only task events
+      parameters: [{ $ref: '#/components/parameters/TaskId' }]
+      responses:
+        '200': { description: Event list }
+  /v1/tasks/{id}/artifacts:
+    get:
+      summary: List task artifact metadata
+      parameters: [{ $ref: '#/components/parameters/TaskId' }]
+      responses:
+        '200': { description: Artifact metadata list }
+  /v1/scrape:
+    post:
+      summary: Create a scrape task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, format: uri }
+                format: { type: string, const: markdown, default: markdown }
+                engine: { type: string, enum: [auto, http, lightpanda, chromium], default: auto }
+                selectors: { type: array, items: { type: string }, default: [] }
+      responses:
+        '202': { description: Queued }
+  /v1/documents:
+    post:
+      summary: Upload a source document and queue parsing
+      parameters:
+        - in: header
+          name: X-File-Name
+          required: false
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/pdf: { schema: { type: string, format: binary } }
+          application/vnd.openxmlformats-officedocument.wordprocessingml.document: { schema: { type: string, format: binary } }
+          application/octet-stream: { schema: { type: string, format: binary } }
+      responses:
+        '202': { description: Uploaded and queued }
+        '413': { description: Empty or over 100 MiB }
+  /v1/nodes:
+    get:
+      summary: List execution nodes
+      description: Requires admin scope.
+      responses:
+        '200': { description: Node list }
+        '403': { description: Missing admin scope }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    TaskId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+  schemas:
+    BrowserAction:
+      oneOf:
+        - type: object
+          required: [type]
+          properties: { type: { const: goto }, url: { type: string, format: uri } }
+        - type: object
+          required: [type, selector]
+          properties: { type: { const: click }, selector: { type: string } }
+        - type: object
+          required: [type, selector, value]
+          properties: { type: { const: fill }, selector: { type: string }, value: { type: string } }
+        - type: object
+          required: [type, selector]
+          properties: { type: { const: wait }, selector: { type: string }, timeoutMs: { type: integer, minimum: 1 } }
+        - type: object
+          required: [type]
+          properties: { type: { const: extract }, selector: { type: string } }
+        - type: object
+          required: [type]
+          properties: { type: { const: screenshot }, fullPage: { type: boolean, default: true } }
+        - type: object
+          required: [type, expression]
+          properties: { type: { const: evaluate }, expression: { type: string } }
+    TaskCreate:
+      type: object
+      required: [type]
+      properties:
+        type: { type: string, enum: [scrape, browser, document] }
+        url: { type: string, format: uri }
+        engine: { type: string, enum: [auto, http, document, lightpanda, chromium, ocr], default: auto }
+        requiresAuth: { type: boolean, default: false }
+        requiresPayment: { type: boolean, default: false }
+        destructive: { type: boolean, default: false }
+        priority: { type: integer, minimum: -100, maximum: 100, default: 0 }
+        maxAttempts: { type: integer, minimum: 1, maximum: 10, default: 3 }
+        timeoutMs: { type: integer, minimum: 1, maximum: 600000 }
+        selectors: { type: array, items: { type: string }, default: [] }
+        actions: { type: array, items: { $ref: '#/components/schemas/BrowserAction' }, default: [] }
+        sourceArtifactId: { type: string }
+        metadata: { type: object, additionalProperties: true, default: {} }

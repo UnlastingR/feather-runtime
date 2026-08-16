@@ -1,0 +1,24 @@
+{
+  "name": "@feather/browser-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@feather/protocol": "workspace:*",
+    "@feather/shared": "workspace:*",
+    "@mozilla/readability": "^0.6.0",
+    "linkedom": "^0.18.13",
+    "puppeteer-core": "^25.7.0",
+    "turndown": "^7.2.1",
+    "undici": "^8.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.6",
+    "@types/turndown": "^5.0.5",
+    "typescript": "^6.0.3"
+  }
+}
