@@ -92,7 +92,8 @@ paths:
         required: true
         content:
           application/pdf: { schema: { type: string, format: binary } }
-          application/vnd.openxmlformats-officedocument.wordprocessingml.document: { schema: { type: string, format: binary } }
+          application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+            { schema: { type: string, format: binary } }
           application/octet-stream: { schema: { type: string, format: binary } }
       responses:
         '202': { description: Uploaded and queued }
@@ -129,7 +130,12 @@ components:
           properties: { type: { const: fill }, selector: { type: string }, value: { type: string } }
         - type: object
           required: [type, selector]
-          properties: { type: { const: wait }, selector: { type: string }, timeoutMs: { type: integer, minimum: 1 } }
+          properties:
+            {
+              type: { const: wait },
+              selector: { type: string },
+              timeoutMs: { type: integer, minimum: 1 },
+            }
         - type: object
           required: [type]
           properties: { type: { const: extract }, selector: { type: string } }
@@ -145,7 +151,8 @@ components:
       properties:
         type: { type: string, enum: [scrape, browser, document] }
         url: { type: string, format: uri }
-        engine: { type: string, enum: [auto, http, document, lightpanda, chromium, ocr], default: auto }
+        engine:
+          { type: string, enum: [auto, http, document, lightpanda, chromium, ocr], default: auto }
         requiresAuth: { type: boolean, default: false }
         requiresPayment: { type: boolean, default: false }
         destructive: { type: boolean, default: false }

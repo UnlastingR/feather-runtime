@@ -18,7 +18,11 @@ const antiBotPatterns = [
   /attention required/i,
   /access denied/i,
 ];
-const jsRequiredPatterns = [/enable javascript/i, /javascript is required/i, /requires javascript/i];
+const jsRequiredPatterns = [
+  /enable javascript/i,
+  /javascript is required/i,
+  /requires javascript/i,
+];
 
 export function extractHtml(
   html: string,
@@ -36,13 +40,16 @@ export function extractHtml(
 
   const article = new Readability(document).parse();
   const mainHtml = article?.content ?? document.body?.innerHTML ?? '';
-  const text = (article?.textContent ?? document.body?.textContent ?? '').replace(/\s+/g, ' ').trim();
+  const text = (article?.textContent ?? document.body?.textContent ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
   const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
   const bodyMarkdown = turndown.turndown(mainHtml).trim();
   const readableTitle = (article?.title ?? title).trim();
-  const markdown = readableTitle && !/^#{1,6}\s/m.test(bodyMarkdown)
-    ? `# ${readableTitle}\n\n${bodyMarkdown}`.trim()
-    : bodyMarkdown;
+  const markdown =
+    readableTitle && !/^#{1,6}\s/m.test(bodyMarkdown)
+      ? `# ${readableTitle}\n\n${bodyMarkdown}`.trim()
+      : bodyMarkdown;
   const antiBotMarkers = antiBotPatterns.filter((pattern) => pattern.test(html)).length;
   const jsRequiredMarkers = jsRequiredPatterns.filter((pattern) => pattern.test(html)).length;
   const confidence = scoreExtraction({

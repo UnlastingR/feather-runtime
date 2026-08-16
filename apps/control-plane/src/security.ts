@@ -1,7 +1,10 @@
 import type { Context, Next } from 'hono';
 import type { Env } from './env.js';
 
-type AppContext = Context<{ Bindings: Env; Variables: { actorId: string; userId: string | null; scopes: string[] } }>;
+type AppContext = Context<{
+  Bindings: Env;
+  Variables: { actorId: string; userId: string | null; scopes: string[] };
+}>;
 
 function bytesToHex(bytes: Uint8Array): string {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -40,37 +43,55 @@ export async function publicAuth(c: AppContext, next: Next): Promise<Response | 
   if (!authorization?.startsWith('Bearer ')) return c.json({ error: 'unauthorized' }, 401);
   const token = authorization.slice('Bearer '.length);
   const tokenHash = await digestHex(`${c.env.API_HASH_PEPPER}:${token}`);
-  const row = await c.env.DB.prepare('SELECT id,user_id,scopes FROM api_keys WHERE token_hash = ? AND revoked_at IS NULL').bind(tokenHash).first<{ id: string; user_id: string | null; scopes: string }>();
+  const row = await c.env.DB.prepare(
+    'SELECT id,user_id,scopes FROM api_keys WHERE token_hash = ? AND revoked_at IS NULL',
+  )
+    .bind(tokenHash)
+    .first<{ id: string; user_id: string | null; scopes: string }>();
   if (!row) return c.json({ error: 'unauthorized' }, 401);
   const scopes = row.scopes.split(/[ ,]+/).filter(Boolean);
   if (row.user_id === null && !scopes.includes('admin')) {
-    return c.json({ error: 'misconfigured_api_key', message: 'Non-admin API keys must belong to a user.' }, 403);
+    return c.json(
+      { error: 'misconfigured_api_key', message: 'Non-admin API keys must belong to a user.' },
+      403,
+    );
   }
   c.set('actorId', row.id);
   c.set('userId', row.user_id);
   c.set('scopes', scopes);
-  c.executionCtx.waitUntil(c.env.DB.prepare('UPDATE api_keys SET last_used_at=? WHERE id=?').bind(Date.now(), row.id).run());
+  c.executionCtx.waitUntil(
+    c.env.DB.prepare('UPDATE api_keys SET last_used_at=? WHERE id=?')
+      .bind(Date.now(), row.id)
+      .run(),
+  );
   return next();
 }
 
 export function requireScope(scope: string) {
   return async (c: AppContext, next: Next): Promise<Response | void> => {
     const scopes = c.get('scopes') ?? [];
-    if (!scopes.includes('admin') && !scopes.includes(scope)) return c.json({ error: 'forbidden', requiredScope: scope }, 403);
+    if (!scopes.includes('admin') && !scopes.includes(scope))
+      return c.json({ error: 'forbidden', requiredScope: scope }, 403);
     return next();
   };
 }
 
 async function importEncryptionKey(encoded: string): Promise<CryptoKey> {
   const raw = base64ToBytes(encoded);
-  if (raw.byteLength !== 32) throw new Error('NODE_KEY_ENCRYPTION_KEY must decode to exactly 32 bytes');
-  return crypto.subtle.importKey('raw', exactArrayBuffer(raw), 'AES-GCM', false, ['encrypt', 'decrypt']);
+  if (raw.byteLength !== 32)
+    throw new Error('NODE_KEY_ENCRYPTION_KEY must decode to exactly 32 bytes');
+  return crypto.subtle.importKey('raw', exactArrayBuffer(raw), 'AES-GCM', false, [
+    'encrypt',
+    'decrypt',
+  ]);
 }
 
 export async function sealNodeSecret(secret: string, encryptionKey: string): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await importEncryptionKey(encryptionKey);
-  const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(secret)));
+  const ciphertext = new Uint8Array(
+    await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(secret)),
+  );
   const combined = new Uint8Array(iv.length + ciphertext.length);
   combined.set(iv, 0);
   combined.set(ciphertext, iv.length);
@@ -87,10 +108,22 @@ async function openNodeSecret(sealed: string, encryptionKey: string): Promise<st
   return new TextDecoder().decode(plaintext);
 }
 
-async function verifyHmac(secret: string, canonical: string, signatureHex: string): Promise<boolean> {
+async function verifyHmac(
+  secret: string,
+  canonical: string,
+  signatureHex: string,
+): Promise<boolean> {
   if (!/^[0-9a-f]{64}$/i.test(signatureHex)) return false;
-  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
-  const signature = Uint8Array.from(signatureHex.match(/.{2}/g) ?? [], (hex) => Number.parseInt(hex, 16));
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['verify'],
+  );
+  const signature = Uint8Array.from(signatureHex.match(/.{2}/g) ?? [], (hex) =>
+    Number.parseInt(hex, 16),
+  );
   return crypto.subtle.verify('HMAC', key, signature, new TextEncoder().encode(canonical));
 }
 
@@ -99,25 +132,40 @@ export async function internalHmacAuth(c: AppContext, next: Next): Promise<Respo
   const timestamp = c.req.header('x-feather-timestamp');
   const nonce = c.req.header('x-feather-nonce');
   const signature = c.req.header('x-feather-signature');
-  if (!nodeId || !timestamp || !nonce || !signature) return c.json({ error: 'missing_hmac_headers' }, 401);
+  if (!nodeId || !timestamp || !nonce || !signature)
+    return c.json({ error: 'missing_hmac_headers' }, 401);
   const timestampMs = Number(timestamp);
-  if (!Number.isFinite(timestampMs) || Math.abs(Date.now() - timestampMs) > 300_000) return c.json({ error: 'stale_signature' }, 401);
-  const node = await c.env.DB.prepare("SELECT hmac_key_enc,status FROM nodes WHERE id=?").bind(nodeId).first<{ hmac_key_enc: string; status: string }>();
+  if (!Number.isFinite(timestampMs) || Math.abs(Date.now() - timestampMs) > 300_000)
+    return c.json({ error: 'stale_signature' }, 401);
+  const node = await c.env.DB.prepare('SELECT hmac_key_enc,status FROM nodes WHERE id=?')
+    .bind(nodeId)
+    .first<{ hmac_key_enc: string; status: string }>();
   if (!node || node.status === 'disabled') return c.json({ error: 'unknown_node' }, 401);
   const body = await c.req.raw.clone().arrayBuffer();
   const bodyHash = await digestHex(body);
-  const canonical = [c.req.method.toUpperCase(), new URL(c.req.url).pathname, bodyHash, timestamp, nonce].join('\n');
+  const canonical = [
+    c.req.method.toUpperCase(),
+    new URL(c.req.url).pathname,
+    bodyHash,
+    timestamp,
+    nonce,
+  ].join('\n');
   const secret = await openNodeSecret(node.hmac_key_enc, c.env.NODE_KEY_ENCRYPTION_KEY);
-  if (!(await verifyHmac(secret, canonical, signature))) return c.json({ error: 'bad_signature' }, 401);
+  if (!(await verifyHmac(secret, canonical, signature)))
+    return c.json({ error: 'bad_signature' }, 401);
   try {
-    await c.env.DB.prepare('INSERT INTO hmac_nonces(node_id,nonce,expires_at) VALUES(?,?,?)').bind(nodeId, nonce, timestampMs + 300_000).run();
+    await c.env.DB.prepare('INSERT INTO hmac_nonces(node_id,nonce,expires_at) VALUES(?,?,?)')
+      .bind(nodeId, nonce, timestampMs + 300_000)
+      .run();
   } catch {
     return c.json({ error: 'replayed_nonce' }, 401);
   }
   c.set('actorId', nodeId);
   c.set('userId', null);
   c.set('scopes', ['internal']);
-  c.executionCtx.waitUntil(c.env.DB.prepare('DELETE FROM hmac_nonces WHERE expires_at < ?').bind(Date.now()).run());
+  c.executionCtx.waitUntil(
+    c.env.DB.prepare('DELETE FROM hmac_nonces WHERE expires_at < ?').bind(Date.now()).run(),
+  );
   return next();
 }
 

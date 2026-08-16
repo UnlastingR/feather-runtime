@@ -66,6 +66,23 @@ put_worker_secret() {
   printf '%s' "$value" | wrangler secret put "$name" --env="" >/dev/null
 }
 
+wait_for_bootstrap_secret() {
+  local attempt status
+  for attempt in $(seq 1 30); do
+    status="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' \
+      -X POST "${CONTROL_PLANE_URL}/internal/bootstrap/api-keys" \
+      -H "X-Bootstrap-Token: ${BOOTSTRAP_TOKEN}" \
+      -H 'Content-Type: application/json' \
+      --data '{}')" || status='000'
+    case "$status" in
+      400) return 0 ;;
+      401) sleep 1 ;;
+      *) die "bootstrap propagation probe returned HTTP ${status}" ;;
+    esac
+  done
+  die 'temporary bootstrap credential did not propagate to the deployed Worker'
+}
+
 cf_queue_call() {
   local suffix="$1"
   local json="$2"
@@ -174,6 +191,20 @@ wait_for_agent() {
   return 1
 }
 
+agent_diagnostics() {
+  log 'recent Agent container logs:'
+  docker logs --tail 160 "$AGENT_CONTAINER" >&2 2>&1 || true
+}
+
+task_diagnostics() {
+  local task_id="$1"
+  log "task events for ${task_id}:"
+  curl -fsS --max-time 20 \
+    -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+    "${CONTROL_PLANE_URL}/v1/tasks/${task_id}/events" >&2 || true
+  printf '\n' >&2
+}
+
 create_scrape() {
   local url="$1"
   local engine="$2"
@@ -195,8 +226,9 @@ wait_for_task() {
   local expected_engine="$2"
   local label="$3"
   local i response status selected result_artifact
+  local max_attempts="${E2E_TASK_WAIT_ATTEMPTS:-90}"
 
-  for i in $(seq 1 90); do
+  for i in $(seq 1 "$max_attempts"); do
     response="$(curl -fsS --retry 2 --max-time 20 \
       -H "Authorization: Bearer ${ADMIN_TOKEN}" \
       "${CONTROL_PLANE_URL}/v1/tasks/${task_id}")"
@@ -206,14 +238,19 @@ wait_for_task() {
       completed)
         selected="$(printf '%s' "$response" | json_field 'j.selected_engine')"
         result_artifact="$(printf '%s' "$response" | json_field 'j.result_artifact_id')"
-        [[ "$selected" == "$expected_engine" ]] \
-          || die "${label}: expected engine ${expected_engine}, got ${selected}"
+        if [[ "$selected" != "$expected_engine" ]]; then
+          task_diagnostics "$task_id"
+          agent_diagnostics
+          die "${label}: expected engine ${expected_engine}, got ${selected}"
+        fi
         [[ -n "$result_artifact" ]] \
           || die "${label}: task completed without result_artifact_id"
         log "${label}: completed via ${selected} (${task_id})"
         return 0
         ;;
       failed|cancelled|expired)
+        task_diagnostics "$task_id"
+        agent_diagnostics
         printf '%s\n' "$response" >&2
         die "${label}: task ended in ${status}"
         ;;
@@ -221,6 +258,7 @@ wait_for_task() {
     sleep 2
   done
 
+  agent_diagnostics
   die "${label}: timed out waiting for task ${task_id}"
 }
 
@@ -277,14 +315,39 @@ main() {
   log "installing a temporary bootstrap credential in the Worker"
   put_worker_secret BOOTSTRAP_TOKEN "$BOOTSTRAP_TOKEN"
   BOOTSTRAP_INSTALLED=1
+  wait_for_bootstrap_secret
 
   log "creating a temporary admin API key through the bootstrap endpoint"
-  local key_response
-  key_response="$(curl -fsS --max-time 30 \
-    -X POST "${CONTROL_PLANE_URL}/internal/bootstrap/api-keys" \
-    -H "X-Bootstrap-Token: ${BOOTSTRAP_TOKEN}" \
-    -H 'Content-Type: application/json' \
-    --data "{\"name\":\"feather-e2e\",\"token\":\"${ADMIN_TOKEN}\",\"scopes\":[\"admin\",\"tasks:read\",\"tasks:write\",\"artifacts:read\"],\"userId\":null}")"
+  local key_response key_status key_body attempt
+  key_response=''
+  key_body="$(mktemp)"
+  for attempt in $(seq 1 30); do
+    if key_status="$(curl -sS --max-time 30 \
+      -o "$key_body" -w '%{http_code}' \
+      -X POST "${CONTROL_PLANE_URL}/internal/bootstrap/api-keys" \
+      -H "X-Bootstrap-Token: ${BOOTSTRAP_TOKEN}" \
+      -H 'Content-Type: application/json' \
+      --data "{\"name\":\"feather-e2e\",\"token\":\"${ADMIN_TOKEN}\",\"scopes\":[\"admin\",\"tasks:read\",\"tasks:write\",\"artifacts:read\"],\"userId\":null}")"; then
+      case "$key_status" in
+        201)
+          key_response="$(cat "$key_body")"
+          break
+          ;;
+        401)
+          sleep 1
+          ;;
+        *)
+          cat "$key_body" >&2
+          rm -f "$key_body"
+          die "bootstrap API key endpoint returned HTTP ${key_status}"
+          ;;
+      esac
+    else
+      sleep 1
+    fi
+  done
+  rm -f "$key_body"
+  [[ -n "$key_response" ]] || die 'temporary bootstrap credential did not authorize the bootstrap endpoint'
   ADMIN_KEY_ID="$(printf '%s' "$key_response" | json_field 'j.id')"
 
   log "building current Agent image"

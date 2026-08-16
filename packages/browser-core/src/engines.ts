@@ -10,9 +10,19 @@ import { assertPublicUrl, isBlockedIp, RuntimeError } from '@feather/shared';
 async function assertBrowserUrlPublic(rawUrl: string): Promise<void> {
   const url = assertPublicUrl(rawUrl);
   const answers = await lookup(url.hostname, { all: true, verbatim: true });
-  if (answers.length === 0) throw new RuntimeError('TRANSIENT_NETWORK', `DNS returned no addresses for ${url.hostname}`, true);
+  if (answers.length === 0)
+    throw new RuntimeError(
+      'TRANSIENT_NETWORK',
+      `DNS returned no addresses for ${url.hostname}`,
+      true,
+    );
   for (const answer of answers) {
-    if (isBlockedIp(answer.address)) throw new RuntimeError('SSRF_BLOCKED', `Browser DNS resolved to blocked IP ${answer.address}`, false);
+    if (isBlockedIp(answer.address))
+      throw new RuntimeError(
+        'SSRF_BLOCKED',
+        `Browser DNS resolved to blocked IP ${answer.address}`,
+        false,
+      );
   }
 }
 
@@ -51,7 +61,10 @@ abstract class PuppeteerEngineBase implements BrowserEngine {
 
   async goto(url: string): Promise<NavigationResult> {
     await assertBrowserUrlPublic(url);
-    const response = await this.requirePage().goto(url, { waitUntil: 'domcontentloaded', timeout: this.timeoutMs });
+    const response = await this.requirePage().goto(url, {
+      waitUntil: 'domcontentloaded',
+      timeout: this.timeoutMs,
+    });
     return { url: this.requirePage().url(), ...(response ? { status: response.status() } : {}) };
   }
 
@@ -63,7 +76,8 @@ abstract class PuppeteerEngineBase implements BrowserEngine {
     const page = this.requirePage();
     await page.focus(selector);
     await page.$eval(selector, (element) => {
-      if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) element.value = '';
+      if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)
+        element.value = '';
     });
     await page.type(selector, value);
   }
@@ -105,8 +119,20 @@ export class LightpandaEngine extends PuppeteerEngineBase {
     endpoint.pathname = '/';
     endpoint.search = '';
     endpoint.hash = '';
-    this.browser = await puppeteer.connect({ browserWSEndpoint: endpoint.toString() });
+    // Lightpanda 0.3.7 only accepts the loopback Host header even when its
+    // CDP socket is reached through a Docker service name.
+    const cdpPort = endpoint.port || '9222';
+    this.browser = await puppeteer.connect({
+      browserWSEndpoint: endpoint.toString(),
+      headers: { Host: `127.0.0.1:${cdpPort}` },
+    });
     this.page = await this.browser.newPage();
+  }
+
+  override async goto(url: string): Promise<NavigationResult> {
+    const result = await super.goto(url);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return result;
   }
 
   async close(): Promise<void> {
@@ -134,18 +160,28 @@ export class ChromiumEngine extends PuppeteerEngineBase {
 
   async launch(): Promise<void> {
     this.profileDir = await mkdtemp(join(tmpdir(), 'feather-chromium-'));
-    this.process = spawn(this.binary, [
-      '--headless',
-      '--no-first-run',
-      '--disable-dev-shm-usage',
-      ...(this.noSandbox ? ['--no-sandbox'] : []),
-      '--remote-debugging-port=0',
-      `--user-data-dir=${this.profileDir}`,
-      'about:blank',
-    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+    this.process = spawn(
+      this.binary,
+      [
+        '--headless',
+        '--no-first-run',
+        '--disable-dev-shm-usage',
+        ...(this.noSandbox ? ['--no-sandbox'] : []),
+        '--remote-debugging-port=0',
+        `--user-data-dir=${this.profileDir}`,
+        'about:blank',
+      ],
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    );
 
     const wsEndpoint = await new Promise<string>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new RuntimeError('ENGINE_CRASH', 'Chromium CDP endpoint timeout', true, 'chromium')), 10_000);
+      const timeout = setTimeout(
+        () =>
+          reject(
+            new RuntimeError('ENGINE_CRASH', 'Chromium CDP endpoint timeout', true, 'chromium'),
+          ),
+        10_000,
+      );
       let stderr = '';
       this.process?.stderr.on('data', (chunk: Buffer) => {
         stderr += chunk.toString();
@@ -161,7 +197,14 @@ export class ChromiumEngine extends PuppeteerEngineBase {
       });
       this.process?.once('exit', (code) => {
         clearTimeout(timeout);
-        reject(new RuntimeError('ENGINE_CRASH', `Chromium exited before CDP was ready (${code ?? 'signal'})`, true, 'chromium'));
+        reject(
+          new RuntimeError(
+            'ENGINE_CRASH',
+            `Chromium exited before CDP was ready (${code ?? 'signal'})`,
+            true,
+            'chromium',
+          ),
+        );
       });
     });
     this.browser = await puppeteer.connect({ browserWSEndpoint: wsEndpoint });

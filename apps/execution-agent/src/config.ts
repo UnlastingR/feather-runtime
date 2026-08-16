@@ -12,7 +12,10 @@ const schema = z.object({
   CF_QUEUES_TOKEN: z.string().min(1),
   LIGHTPANDA_CDP_URL: z.url().default('http://lightpanda:9222'),
   CHROMIUM_BIN: z.string().default('/opt/chrome-headless-shell/chrome-headless-shell'),
-  CHROMIUM_NO_SANDBOX: z.enum(['0', '1']).default('0').transform((value) => value === '1'),
+  CHROMIUM_NO_SANDBOX: z
+    .enum(['0', '1'])
+    .default('0')
+    .transform((value) => value === '1'),
   QUEUE_VISIBILITY_TIMEOUT_MS: numberFromEnv(300_000),
   QUEUE_BATCH_SIZE: numberFromEnv(4),
   QUEUE_IDLE_POLL_MS: numberFromEnv(2_000),

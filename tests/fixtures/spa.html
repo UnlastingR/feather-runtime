@@ -1,2 +1,17 @@
 <!doctype html>
-<html><head><title>SPA Fixture</title></head><body><div id="app">Loading…</div><script>setTimeout(() => { document.querySelector('#app').innerHTML = '<main><h1>Hydrated</h1><p>This content only appears after JavaScript hydration. '.repeat(20) + '</p></main>'; }, 25);</script></body></html>
+<html>
+  <head>
+    <title>SPA Fixture</title>
+  </head>
+  <body>
+    <div id="app">Loading…</div>
+    <script>
+      setTimeout(() => {
+        document.querySelector('#app').innerHTML =
+          '<main><h1>Hydrated</h1><p>This content only appears after JavaScript hydration. '.repeat(
+            20,
+          ) + '</p></main>';
+      }, 25);
+    </script>
+  </body>
+</html>

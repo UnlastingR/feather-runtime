@@ -21,9 +21,16 @@ export interface HttpFastPathResult extends ExtractedPage {
 
 async function assertResolvedPublic(hostname: string): Promise<void> {
   const addresses = await lookup(hostname, { all: true, verbatim: true });
-  if (addresses.length === 0) throw new RuntimeError('TRANSIENT_NETWORK', 'DNS returned no addresses', true, 'http');
+  if (addresses.length === 0)
+    throw new RuntimeError('TRANSIENT_NETWORK', 'DNS returned no addresses', true, 'http');
   for (const { address } of addresses) {
-    if (isBlockedIp(address)) throw new RuntimeError('SSRF_BLOCKED', `DNS resolved to blocked IP ${address}`, false, 'http');
+    if (isBlockedIp(address))
+      throw new RuntimeError(
+        'SSRF_BLOCKED',
+        `DNS resolved to blocked IP ${address}`,
+        false,
+        'http',
+      );
   }
 }
 
@@ -34,7 +41,9 @@ const safeLookup: LookupFunction = (hostname, options, callback) => {
       return;
     }
     if (typeof address === 'string' && isBlockedIp(address)) {
-      const blocked = Object.assign(new Error(`Blocked DNS result for ${hostname}: ${address}`), { code: 'EACCES' });
+      const blocked = Object.assign(new Error(`Blocked DNS result for ${hostname}: ${address}`), {
+        code: 'EACCES',
+      });
       callback(blocked, address, family);
       return;
     }
@@ -61,10 +70,15 @@ async function readLimitedBody(response: Response, maxBytes: number): Promise<st
   return new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
 }
 
-export async function httpFastPath(rawUrl: string, options: HttpFastPathOptions): Promise<HttpFastPathResult> {
+export async function httpFastPath(
+  rawUrl: string,
+  options: HttpFastPathOptions,
+): Promise<HttpFastPathResult> {
   let url = assertPublicUrl(rawUrl);
   const maxRedirects = options.maxRedirects ?? 10;
-  const dispatcher = new Agent({ connect: { timeout: Math.min(options.timeoutMs, 10_000), lookup: safeLookup } });
+  const dispatcher = new Agent({
+    connect: { timeout: Math.min(options.timeoutMs, 10_000), lookup: safeLookup },
+  });
   try {
     for (let redirects = 0; redirects <= maxRedirects; redirects += 1) {
       await assertResolvedPublic(url.hostname);
@@ -83,7 +97,13 @@ export async function httpFastPath(rawUrl: string, options: HttpFastPathOptions)
           },
         });
       } catch (error) {
-        if (controller.signal.aborted) throw new RuntimeError('TIMEOUT', `HTTP timeout after ${options.timeoutMs}ms`, true, 'http');
+        if (controller.signal.aborted)
+          throw new RuntimeError(
+            'TIMEOUT',
+            `HTTP timeout after ${options.timeoutMs}ms`,
+            true,
+            'http',
+          );
         throw error;
       } finally {
         clearTimeout(timer);
@@ -91,8 +111,10 @@ export async function httpFastPath(rawUrl: string, options: HttpFastPathOptions)
 
       if ([301, 302, 303, 307, 308].includes(response.status)) {
         const location = response.headers.get('location');
-        if (!location) throw new RuntimeError('PAGE_ERROR', 'Redirect without Location header', false, 'http');
-        if (redirects === maxRedirects) throw new RuntimeError('PAGE_ERROR', 'Too many redirects', false, 'http');
+        if (!location)
+          throw new RuntimeError('PAGE_ERROR', 'Redirect without Location header', false, 'http');
+        if (redirects === maxRedirects)
+          throw new RuntimeError('PAGE_ERROR', 'Too many redirects', false, 'http');
         url = assertPublicUrl(new URL(location, url).toString());
         continue;
       }
@@ -100,14 +122,25 @@ export async function httpFastPath(rawUrl: string, options: HttpFastPathOptions)
       const contentType = response.headers.get('content-type') ?? 'application/octet-stream';
       const rawHtml = await readLimitedBody(response as unknown as Response, options.maxBytes);
       if (!contentType.includes('html') && !contentType.startsWith('text/')) {
-        throw new RuntimeError('PAGE_ERROR', `HTTP fast path unsupported content-type: ${contentType}`, false, 'http');
+        throw new RuntimeError(
+          'PAGE_ERROR',
+          `HTTP fast path unsupported content-type: ${contentType}`,
+          false,
+          'http',
+        );
       }
       const extracted = extractHtml(rawHtml, {
         statusCode: response.status,
         contentType,
         ...(options.selectors !== undefined ? { selectors: options.selectors } : {}),
       });
-      return { ...extracted, url: url.toString(), statusCode: response.status, contentType, rawHtml };
+      return {
+        ...extracted,
+        url: url.toString(),
+        statusCode: response.status,
+        contentType,
+        rawHtml,
+      };
     }
   } finally {
     await dispatcher.close();

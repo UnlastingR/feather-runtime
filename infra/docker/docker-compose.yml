@@ -3,7 +3,7 @@ services:
     image: lightpanda/browser:0.3.7
     restart: unless-stopped
     expose:
-      - "9222"
+      - '9222'
     mem_limit: 384m
     pids_limit: 128
     security_opt:
@@ -14,7 +14,7 @@ services:
       context: ../..
       dockerfile: infra/docker/Dockerfile.agent
       args:
-        CHROME_VERSION: "152.0.7977.42"
+        CHROME_VERSION: '152.0.7977.42'
     restart: unless-stopped
     depends_on:
       - lightpanda
@@ -26,7 +26,7 @@ services:
       # Chrome's Linux user-namespace sandbox is often unavailable inside Docker.
       # The reference container is unprivileged and uses no-new-privileges; native
       # deployments keep Chromium's sandbox enabled by leaving this at 0.
-      CHROMIUM_NO_SANDBOX: "1"
+      CHROMIUM_NO_SANDBOX: '1'
     mem_limit: 1536m
     pids_limit: 256
     init: true

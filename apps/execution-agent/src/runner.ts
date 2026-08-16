@@ -1,15 +1,35 @@
 import { extname } from 'node:path';
 import { freemem } from 'node:os';
 import { z } from 'zod';
-import { ChromiumEngine, extractHtml, fallbackAfter, httpFastPath, LightpandaEngine, routeEngine, type BrowserEngine, type DomainPolicy, type EngineHint } from '@feather/browser-core';
+import {
+  ChromiumEngine,
+  extractHtml,
+  fallbackAfter,
+  httpFastPath,
+  LightpandaEngine,
+  routeEngine,
+  type BrowserEngine,
+  type DomainPolicy,
+  type EngineHint,
+} from '@feather/browser-core';
 import { DocumentRouter } from '@feather/document-core';
-import { InternalTaskSchema, type ArtifactRef, type BrowserAction, type ExecutedEngine, type InternalTask } from '@feather/protocol';
+import {
+  InternalTaskSchema,
+  type ArtifactRef,
+  type BrowserAction,
+  type ExecutedEngine,
+  type InternalTask,
+} from '@feather/protocol';
 import { assertPublicUrl, classifyError, RuntimeError } from '@feather/shared';
 import type { AgentConfig } from './config.js';
 import { ControlPlaneClient } from './api-client.js';
 import { Semaphore } from './resource-gate.js';
 
-const startResponseSchema = z.object({ execute: z.boolean(), reason: z.string().optional(), retry: z.boolean().optional() });
+const startResponseSchema = z.object({
+  execute: z.boolean(),
+  reason: z.string().optional(),
+  retry: z.boolean().optional(),
+});
 
 interface RunResult {
   engine: ExecutedEngine;
@@ -23,7 +43,8 @@ interface RunResult {
 
 function mapPolicy(raw: Record<string, unknown> | null): DomainPolicy | undefined {
   if (!raw) return undefined;
-  const engine = (value: unknown): 'http' | 'lightpanda' | 'chromium' | undefined => value === 'http' || value === 'lightpanda' || value === 'chromium' ? value : undefined;
+  const engine = (value: unknown): 'http' | 'lightpanda' | 'chromium' | undefined =>
+    value === 'http' || value === 'lightpanda' || value === 'chromium' ? value : undefined;
   const preferred = engine(raw['preferred_engine']);
   const force = engine(raw['force_engine']);
   return {
@@ -40,9 +61,19 @@ function mapHint(raw: Record<string, unknown> | null): EngineHint | undefined {
   if (!raw) return undefined;
   const preferred = raw['preferred'];
   const confidence = raw['confidence'];
-  if ((preferred !== 'http' && preferred !== 'lightpanda' && preferred !== 'chromium') || typeof confidence !== 'number') return undefined;
+  if (
+    (preferred !== 'http' && preferred !== 'lightpanda' && preferred !== 'chromium') ||
+    typeof confidence !== 'number'
+  )
+    return undefined;
   const fallback = raw['fallback'];
-  return { preferred, confidence, ...((fallback === 'http' || fallback === 'lightpanda' || fallback === 'chromium') ? { fallback } : {}) };
+  return {
+    preferred,
+    confidence,
+    ...(fallback === 'http' || fallback === 'lightpanda' || fallback === 'chromium'
+      ? { fallback }
+      : {}),
+  };
 }
 
 export class TaskRunner {
@@ -50,7 +81,10 @@ export class TaskRunner {
   private readonly lightpandaGate: Semaphore;
   private readonly chromiumGate: Semaphore;
 
-  constructor(private readonly config: AgentConfig, private readonly api: ControlPlaneClient) {
+  constructor(
+    private readonly config: AgentConfig,
+    private readonly api: ControlPlaneClient,
+  ) {
     this.lightpandaGate = new Semaphore(config.MAX_LIGHTPANDA_CONCURRENCY);
     this.chromiumGate = new Semaphore(config.MAX_CHROMIUM_CONCURRENCY);
   }
@@ -77,12 +111,24 @@ export class TaskRunner {
         ...(policy ? { policy } : {}),
         ...(hint ? { hint } : {}),
       });
-      const start = startResponseSchema.parse(await this.api.request('POST', `/internal/tasks/${taskId}/start`, { attemptId, idempotencyKey, engine: firstEngine }));
+      const start = startResponseSchema.parse(
+        await this.api.request('POST', `/internal/tasks/${taskId}/start`, {
+          attemptId,
+          idempotencyKey,
+          engine: firstEngine,
+        }),
+      );
       if (!start.execute) return start.retry ? 'retry' : 'ack';
       startAccepted = true;
-      const result = task.type === 'document'
-        ? await this.runDocument(task, attemptId)
-        : await this.runWeb(task, attemptId, firstEngine === 'document' ? 'http' : firstEngine, policy);
+      const result =
+        task.type === 'document'
+          ? await this.runDocument(task, attemptId)
+          : await this.runWeb(
+              task,
+              attemptId,
+              firstEngine === 'document' ? 'http' : firstEngine,
+              policy,
+            );
       peakMemoryMb = Math.max(peakMemoryMb, Math.ceil(process.memoryUsage().rss / 1024 / 1024));
       const resultArtifact = await this.api.uploadArtifact(task.id, attemptId, {
         bytes: new TextEncoder().encode(result.markdown),
@@ -123,16 +169,39 @@ export class TaskRunner {
 
   private async runDocument(task: InternalTask, attemptId: string): Promise<RunResult> {
     const sourceId = task.payload.sourceArtifactId;
-    if (!sourceId) throw new RuntimeError('INVALID_INPUT', 'Document task lacks sourceArtifactId', false, 'document');
+    if (!sourceId)
+      throw new RuntimeError(
+        'INVALID_INPUT',
+        'Document task lacks sourceArtifactId',
+        false,
+        'document',
+      );
     const source = await this.api.getArtifact(sourceId);
-    const filename = typeof task.payload.metadata['filename'] === 'string' ? task.payload.metadata['filename'] : 'document.bin';
+    const filename =
+      typeof task.payload.metadata['filename'] === 'string'
+        ? task.payload.metadata['filename']
+        : 'document.bin';
     const extension = extname(filename).slice(1).toLowerCase();
     const parsed = await this.documents.parse(source.bytes, { mime: source.mime, extension });
-    await this.api.event(task.id, attemptId, 'document.parsed', { parser: parsed.parser, confidence: parsed.confidence });
-    return { engine: 'document', markdown: parsed.markdown, confidence: parsed.confidence, artifacts: [], fallbackChain: ['document'] };
+    await this.api.event(task.id, attemptId, 'document.parsed', {
+      parser: parsed.parser,
+      confidence: parsed.confidence,
+    });
+    return {
+      engine: 'document',
+      markdown: parsed.markdown,
+      confidence: parsed.confidence,
+      artifacts: [],
+      fallbackChain: ['document'],
+    };
   }
 
-  private async runWeb(task: InternalTask, attemptId: string, firstEngine: 'http' | 'lightpanda' | 'chromium', policy?: DomainPolicy): Promise<RunResult> {
+  private async runWeb(
+    task: InternalTask,
+    attemptId: string,
+    firstEngine: 'http' | 'lightpanda' | 'chromium',
+    policy?: DomainPolicy,
+  ): Promise<RunResult> {
     if (!task.url) throw new RuntimeError('INVALID_INPUT', 'Web task lacks URL', false);
     assertPublicUrl(task.url);
     let engine: 'http' | 'lightpanda' | 'chromium' = firstEngine;
@@ -147,13 +216,33 @@ export class TaskRunner {
             selectors: task.payload.selectors,
           });
           if (result.confidence.score >= this.config.HTTP_CONFIDENCE_THRESHOLD) {
-            const raw = await this.api.uploadArtifact(task.id, attemptId, { bytes: new TextEncoder().encode(result.rawHtml), mime: 'text/html; charset=utf-8', kind: 'debug', name: 'page.html' });
-            return { engine: 'http', markdown: result.markdown, text: result.text, confidence: result.confidence.score, rawHtml: result.rawHtml, artifacts: [raw], fallbackChain: chain };
+            const raw = await this.api.uploadArtifact(task.id, attemptId, {
+              bytes: new TextEncoder().encode(result.rawHtml),
+              mime: 'text/html; charset=utf-8',
+              kind: 'debug',
+              name: 'page.html',
+            });
+            return {
+              engine: 'http',
+              markdown: result.markdown,
+              text: result.text,
+              confidence: result.confidence.score,
+              rawHtml: result.rawHtml,
+              artifacts: [raw],
+              fallbackChain: chain,
+            };
           }
-          await this.api.event(task.id, attemptId, 'http.failed', { reason: 'low_confidence', confidence: result.confidence.score, reasons: result.confidence.reasons });
+          await this.api.event(task.id, attemptId, 'http.failed', {
+            reason: 'low_confidence',
+            confidence: result.confidence.score,
+            reasons: result.confidence.reasons,
+          });
         } catch (error) {
           const classified = classifyError(error);
-          await this.api.event(task.id, attemptId, 'http.failed', { errorCode: classified.code, message: classified.message.slice(0, 300) });
+          await this.api.event(task.id, attemptId, 'http.failed', {
+            errorCode: classified.code,
+            message: classified.message.slice(0, 300),
+          });
           if (classified.code === 'SSRF_BLOCKED') throw classified;
         }
       } else {
@@ -161,28 +250,57 @@ export class TaskRunner {
           return await this.runBrowser(task, attemptId, engine, chain);
         } catch (error) {
           const classified = classifyError(error);
-          await this.api.event(task.id, attemptId, `${engine}.failed`, { errorCode: classified.code, message: classified.message.slice(0, 300) });
-          if (classified.code === 'SSRF_BLOCKED' || classified.code === 'AUTH_REQUIRED' || classified.code === 'CHALLENGE') throw classified;
+          await this.api.event(task.id, attemptId, `${engine}.failed`, {
+            errorCode: classified.code,
+            message: classified.message.slice(0, 300),
+          });
+          if (
+            classified.code === 'SSRF_BLOCKED' ||
+            classified.code === 'AUTH_REQUIRED' ||
+            classified.code === 'CHALLENGE'
+          )
+            throw classified;
         }
       }
       const next = fallbackAfter(engine, policy);
-      if (!next) throw new RuntimeError('PAGE_ERROR', `All permitted engines failed: ${chain.join(' -> ')}`, false, engine);
+      if (!next)
+        throw new RuntimeError(
+          'PAGE_ERROR',
+          `All permitted engines failed: ${chain.join(' -> ')}`,
+          false,
+          engine,
+        );
       engine = next;
     }
   }
 
-  private async runBrowser(task: InternalTask, attemptId: string, engineName: 'lightpanda' | 'chromium', chain: string[]): Promise<RunResult> {
+  private async runBrowser(
+    task: InternalTask,
+    attemptId: string,
+    engineName: 'lightpanda' | 'chromium',
+    chain: string[],
+  ): Promise<RunResult> {
     const freeMb = Math.floor(freemem() / 1024 / 1024);
-    if (engineName === 'chromium' && freeMb < this.config.MIN_FREE_MEMORY_MB) throw new RuntimeError('ENGINE_CRASH', `Insufficient free memory for Chromium: ${freeMb} MB`, true, 'chromium');
+    if (engineName === 'chromium' && freeMb < this.config.MIN_FREE_MEMORY_MB)
+      throw new RuntimeError(
+        'ENGINE_CRASH',
+        `Insufficient free memory for Chromium: ${freeMb} MB`,
+        true,
+        'chromium',
+      );
     const gate = engineName === 'chromium' ? this.chromiumGate : this.lightpandaGate;
     const release = await gate.acquire();
-    const browser: BrowserEngine = engineName === 'chromium'
-      ? new ChromiumEngine(
-          this.config.CHROMIUM_BIN,
-          task.timeoutMs ?? this.config.BROWSER_TIMEOUT_MS,
-          this.config.CHROMIUM_NO_SANDBOX,
-        )
-      : new LightpandaEngine(this.config.LIGHTPANDA_CDP_URL, task.timeoutMs ?? this.config.BROWSER_TIMEOUT_MS);
+    const browser: BrowserEngine =
+      engineName === 'chromium'
+        ? new ChromiumEngine(
+            this.config.CHROMIUM_BIN,
+            task.timeoutMs ?? this.config.BROWSER_TIMEOUT_MS,
+            this.config.CHROMIUM_NO_SANDBOX,
+          )
+        : new LightpandaEngine(
+            this.config.LIGHTPANDA_CDP_URL,
+            task.timeoutMs ?? this.config.BROWSER_TIMEOUT_MS,
+          );
     const artifacts: ArtifactRef[] = [];
     try {
       await this.api.event(task.id, attemptId, `${engineName}.started`, {});
@@ -191,25 +309,57 @@ export class TaskRunner {
       if (task.type === 'browser') {
         for (const action of task.payload.actions) {
           const fresh = InternalTaskSchema.parse((await this.api.getTask(task.id)).task);
-          if (fresh.cancelRequested) throw new RuntimeError('CANCELLED', 'Task cancellation requested', false, engineName);
+          if (fresh.cancelRequested)
+            throw new RuntimeError('CANCELLED', 'Task cancellation requested', false, engineName);
           await this.performAction(browser, action, task, attemptId, artifacts);
         }
       }
       const html = await browser.getContent();
-      const extracted = extractHtml(html, { statusCode: 200, contentType: 'text/html', selectors: task.payload.selectors });
-      if (extracted.confidence.score < this.config.LIGHTPANDA_CONFIDENCE_THRESHOLD && engineName === 'lightpanda') {
-        throw new RuntimeError('PAGE_ERROR', `Lightpanda render confidence ${extracted.confidence.score} below threshold`, false, 'lightpanda');
+      const extracted = extractHtml(html, {
+        statusCode: 200,
+        contentType: 'text/html',
+        selectors: task.payload.selectors,
+      });
+      if (
+        extracted.confidence.score < this.config.LIGHTPANDA_CONFIDENCE_THRESHOLD &&
+        engineName === 'lightpanda'
+      ) {
+        throw new RuntimeError(
+          'PAGE_ERROR',
+          `Lightpanda render confidence ${extracted.confidence.score} below threshold`,
+          false,
+          'lightpanda',
+        );
       }
-      const raw = await this.api.uploadArtifact(task.id, attemptId, { bytes: new TextEncoder().encode(html), mime: 'text/html; charset=utf-8', kind: 'debug', name: `${engineName}-page.html` });
+      const raw = await this.api.uploadArtifact(task.id, attemptId, {
+        bytes: new TextEncoder().encode(html),
+        mime: 'text/html; charset=utf-8',
+        kind: 'debug',
+        name: `${engineName}-page.html`,
+      });
       artifacts.push(raw);
-      return { engine: engineName, markdown: extracted.markdown, text: extracted.text, confidence: extracted.confidence.score, rawHtml: html, artifacts, fallbackChain: [...chain] };
+      return {
+        engine: engineName,
+        markdown: extracted.markdown,
+        text: extracted.text,
+        confidence: extracted.confidence.score,
+        rawHtml: html,
+        artifacts,
+        fallbackChain: [...chain],
+      };
     } finally {
       await browser.close().catch(() => undefined);
       release();
     }
   }
 
-  private async performAction(browser: BrowserEngine, action: BrowserAction, task: InternalTask, attemptId: string, artifacts: ArtifactRef[]): Promise<void> {
+  private async performAction(
+    browser: BrowserEngine,
+    action: BrowserAction,
+    task: InternalTask,
+    attemptId: string,
+    artifacts: ArtifactRef[],
+  ): Promise<void> {
     switch (action.type) {
       case 'goto': {
         const target = action.url ?? task.url;
@@ -218,14 +368,31 @@ export class TaskRunner {
         await browser.goto(target);
         break;
       }
-      case 'click': await browser.click(action.selector); break;
-      case 'fill': await browser.fill(action.selector, action.value); break;
-      case 'wait': await browser.waitFor(action.selector, action.timeoutMs); break;
-      case 'extract': if (action.selector) await browser.waitFor(action.selector); break;
-      case 'evaluate': await browser.evaluate(action.expression); break;
+      case 'click':
+        await browser.click(action.selector);
+        break;
+      case 'fill':
+        await browser.fill(action.selector, action.value);
+        break;
+      case 'wait':
+        await browser.waitFor(action.selector, action.timeoutMs);
+        break;
+      case 'extract':
+        if (action.selector) await browser.waitFor(action.selector);
+        break;
+      case 'evaluate':
+        await browser.evaluate(action.expression);
+        break;
       case 'screenshot': {
         const bytes = await browser.screenshot(action.fullPage);
-        artifacts.push(await this.api.uploadArtifact(task.id, attemptId, { bytes, mime: 'image/webp', kind: 'screenshot', name: 'screenshot.webp' }));
+        artifacts.push(
+          await this.api.uploadArtifact(task.id, attemptId, {
+            bytes,
+            mime: 'image/webp',
+            kind: 'screenshot',
+            name: 'screenshot.webp',
+          }),
+        );
         break;
       }
     }
